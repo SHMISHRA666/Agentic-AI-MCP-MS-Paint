@@ -20,7 +20,7 @@ api_key = os.getenv("GEMINI_API_KEY")
 client = genai.configure(api_key=api_key)
 
 # Global variables to track conversation state
-max_iterations = 3  # Maximum number of tool-calling iterations
+max_iterations = 10  # Maximum number of tool-calling iterations
 last_response = None  # Stores the response from the previous iteration
 iteration = 0  # Current iteration count
 iteration_response = []  # List to store results from all iterations
@@ -144,7 +144,7 @@ async def main():
                 print("Created system prompt...")
                 
                 # Build the system prompt that instructs the LLM on how to use tools
-                system_prompt = f"""You are a math agent solving problems in iterations. You have access to various mathematical tools.
+                system_prompt = f"""You are an agent that can solve both text-based and mathematical problems in iterations. You have access to various tools for text processing, mathematics, and visualization.
 
 Available tools:
 {tools_description}
@@ -154,23 +154,52 @@ You must respond with EXACTLY ONE line in one of these formats (no additional te
    FUNCTION_CALL: function_name|param1|param2|...
    
 2. For final answers:
-   FINAL_ANSWER: [number]
+   FINAL_ANSWER: [your answer]
 
-Important:
+CRITICAL INSTRUCTIONS:
+- You must provide ONLY ONE function call per iteration - do not provide multiple function calls at once
+- The system will execute your function call and return the result before asking for your next action
+- First, carefully analyze what the query is asking for to determine which functions are needed
+- Only use functions that are directly relevant to solving the current query
+- Do not call functions unnecessarily - only call a function if its output is needed
+- For example, only use strings_to_chars_to_int if you specifically need to convert characters to ASCII values
+- Similarly, only use fibonacci_numbers or other math functions when the query requires them
 - When a function returns multiple values, you need to process all of them
-- Only give FINAL_ANSWER when you have completed all necessary calculations
-- Do not repeat function calls with the same parameters
+- For array parameters (like int_list_to_exponential_sum), pass all values in a single call separated by commas
+- Do not repeat function calls with the same parameters - if a call gives an error, try a different format
+- Only give FINAL_ANSWER when you have completed all necessary calculations or text processing
+- Your final answer can be either text or numbers, depending on what the query asks for
+- After calculating the final answer, you must visualize it in Microsoft Paint using these operations:
+  1. First call 'open_paint' to open the Paint application
+  2. Secondly, call 'draw_rectangle' to create a rectangle on the canvas
+  3. Finally, call 'add_text_in_paint' with your final answer text. The text should always be in the format: FINAL_ANSWER: [your answer]
+  4. Only after completing these Paint operations, provide your FINAL_ANSWER
 
-Examples:
-- FUNCTION_CALL: add|5|3
-- FUNCTION_CALL: strings_to_chars_to_int|INDIA
-- FINAL_ANSWER: [42]
+Examples of different types of problems (REMEMBER: ONE FUNCTION CALL PER ITERATION):
+- For math: FUNCTION_CALL: add|5|3
+- For string processing: FUNCTION_CALL: strings_to_chars_to_int|INDIA
+- For string length: FUNCTION_CALL: length_string|Delhi
+- For sequence generation: FUNCTION_CALL: fibonacci_numbers|6
+- For array operations (CORRECT): FUNCTION_CALL: int_list_to_exponential_sum|73,78,68,73,65
+- For array operations (INCORRECT): FUNCTION_CALL: int_list_to_exponential_sum|73|78|68|73|65
+- For Paint operations: 
+  FUNCTION_CALL: open_paint
+  FUNCTION_CALL: draw_rectangle|600|350|1150|700
+  FUNCTION_CALL: add_text_in_paint|FINAL_ANSWER: [0, 1, 1, 2, 3, 5]
+- Final response can be text: FINAL_ANSWER: [Delhi]
+- Or numbers: FINAL_ANSWER: [0, 1, 1, 2, 3, 5]
 
 DO NOT include any explanations or additional text.
 Your entire response should be a single line starting with either FUNCTION_CALL: or FINAL_ANSWER:"""
 
                 # The main query to solve
-                query = """Find the ASCII values of characters in INDIA and then return sum of exponentials of those values. """
+                query = """First find the length of string of the answer to the question\
+                'What is the capital of India?' and \
+                then Find the fibonacci numbers of the length of the answer\
+                to the previous question \
+                ('What is the capital of India?'). \
+                visualize it in Microsoft Paint by opening Paint, \
+                drawing a rectangle, and adding the result as text."""
                 print("Starting iteration loop...")
                 
                 # Use global iteration variables for tracking state
@@ -266,6 +295,12 @@ Your entire response should be a single line starting with either FUNCTION_CALL:
                             result = await session.call_tool(func_name, arguments=arguments)
                             print(f"DEBUG: Raw result: {result}")
                             
+                            # Add delays after Paint operations to ensure they complete successfully
+                            if func_name == "open_paint":
+                                await asyncio.sleep(2)  # Wait longer for Paint to open fully
+                            elif func_name == "draw_rectangle" or func_name == "add_text_in_paint":
+                                await asyncio.sleep(2)  # Wait for Paint operations to complete
+                            
                             # Extract and format the result content
                             if hasattr(result, 'content'):
                                 print(f"DEBUG: Result has content attribute")
@@ -308,40 +343,7 @@ Your entire response should be a single line starting with either FUNCTION_CALL:
                     # Process final answer when the model has completed the calculation
                     elif response_text.startswith("FINAL_ANSWER:"):
                         print("\n=== Agent Execution Complete ===")
-                        
-                        # Open Microsoft Paint to visualize the result
-                        result = await session.call_tool("open_paint")
-                        print(result.content[0].text)
-
-                        # Wait for Paint to be fully maximized
-                        await asyncio.sleep(2)
-
-                        # Draw a rectangle on the Paint canvas
-                        result = await session.call_tool(
-                            "draw_rectangle",
-                            arguments={
-                                "x1": 600,
-                                "y1": 400,
-                                "x2": 1000,
-                                "y2": 600
-                            }
-                        )
-                        print(result.content[0].text)
-
-                        await asyncio.sleep(2)
-
-                        # Add the final result text to the Paint canvas
-                        print("Adding text...")
-                        print(f"Sending text: {response_text}")
-
-                        result = await session.call_tool(
-                            "add_text_in_paint",
-                            arguments={
-                                "text": response_text
-                            }
-                        )
-                        print(result.content[0].text)
-                        print("All steps completed.")
+                        print(f"Final answer: {response_text}")
                         break
 
                     # Increment iteration counter

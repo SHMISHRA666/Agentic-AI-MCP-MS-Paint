@@ -31,6 +31,12 @@ def add_list(l: list) -> int:
     print("CALLED: add(l: list) -> int:")
     return sum(l)
 
+@mcp.tool()
+def length_string(string: str) -> int:
+    """Return the length of a string"""
+    print("CALLED: length_string(string: str) -> int:")
+    return len(string)
+
 # subtraction tool
 @mcp.tool()
 def subtract(a: int, b: int) -> int:
@@ -193,11 +199,11 @@ async def draw_rectangle(x1: int, y1: int, x2: int, y2: int) -> dict:
         canvas = paint_window.child_window(class_name='MSPaintView')
         
         # Draw rectangle - coordinates should already be relative to the Paint window
-        # Offset by 200, 100 to position correctly within the canvas
-        canvas.click_input(coords=(x1+200, y1+100))
-        canvas.press_mouse_input(coords=(x1+200, y1+100))
-        canvas.move_mouse_input(coords=(x2+200, y2+100))
-        canvas.release_mouse_input(coords=(x2+200, y2+100))
+        # Offset by 100,100 to position correctly within the canvas
+        canvas.click_input(coords=(x1+100, y1+100))
+        canvas.press_mouse_input(coords=(x1+100, y1+100))
+        canvas.move_mouse_input(coords=(x2+100, y2+100))
+        canvas.release_mouse_input(coords=(x2+100, y2+100))
         
         # Return success message
         return {
@@ -262,28 +268,34 @@ async def add_text_in_paint(text: str) -> dict:
         
         # Click where to start typing
          # Create a text area by clicking and dragging
-        canvas.click_input(coords=(830, 570))
+        canvas.click_input(coords=(772, 576))
         time.sleep(0.2)
-        canvas.press_mouse_input(coords=(830, 570))
+        canvas.press_mouse_input(coords=(772, 576))
         time.sleep(0.2)
         # Make text area wider based on text length
-        canvas.move_mouse_input(coords=(830+len(text)*10, 570))
+        canvas.move_mouse_input(coords=(772+len(text)*20, 576))
         time.sleep(0.2)
-        canvas.release_mouse_input(coords=(830+len(text)*10, 570))
+        canvas.release_mouse_input(coords=(772+len(text)*20, 576))
         time.sleep(2)
 
         # Process the text content - extract numerical part if needed
         full_text = text
-        # Remove brackets and unnecessary parts if needed
-        if "[" in full_text and "]" in full_text:
-            # Keep the original format but ensure the numerical part is included
-            start_idx = full_text.find("[")
-            end_idx = full_text.find("]") + 1
-            numerical_part = full_text[start_idx+1:end_idx-1]
-            full_text = full_text.split(":")[0] + ": " + numerical_part
+        # # Remove brackets and unnecessary parts if needed
+        # if "[" in full_text and "]" in full_text:
+        #     # Keep the original format but ensure the numerical part is included
+        #     start_idx = full_text.find("[")
+        #     end_idx = full_text.find("]") + 1
+        #     numerical_part = full_text[start_idx:end_idx]
+        #     full_text = full_text.split(":")[0] + ": " + numerical_part
         
-        # Type the text passed from client
-        paint_window.type_keys(full_text)
+        # Type the text passed from client - handle spaces properly
+        # pywinauto's type_keys method requires special handling for spaces
+        # Using '{SPACE}' to ensure spaces are correctly typed
+        processed_text = full_text.replace(" ", "{SPACE}")
+        paint_window.type_keys(processed_text)
+
+        # # Type the text passed from client
+        # paint_window.type_keys(full_text)
         time.sleep(2)
         
         # Click elsewhere to exit text mode
