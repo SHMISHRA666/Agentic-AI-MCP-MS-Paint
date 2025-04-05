@@ -1,0 +1,24 @@
+# MCP framework for building AI tools
+mcp>=0.7.0
+uv
+
+# Image processing
+Pillow>=9.0.0
+
+# Windows automation libraries
+pywinauto>=0.6.8
+PyWin32>=304
+
+# Environment variables management
+python-dotenv>=1.0.0
+
+# Google AI libraries for LLM access
+google-generativeai>=0.3.0
+
+# HTTP request libraries for OAuth and Gmail API
+requests>=2.31.0
+
+# Google API client libraries for Gmail integration
+google-api-python-client>=2.0.0
+google-auth-httplib2>=0.1.0
+google-auth-oauthlib>=0.5.0 

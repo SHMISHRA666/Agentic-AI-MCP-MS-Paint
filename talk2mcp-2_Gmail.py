@@ -5,12 +5,12 @@ from mcp import ClientSession, StdioServerParameters, types
 from mcp.client.stdio import stdio_client
 import asyncio
 # Import Google's generative AI library
-# Note: Using google.generativeai directly instead of deprecated google.genai
+# Note: Using google.generativeai directly instead of the deprecated google.genai
 import google.generativeai as genai
 from concurrent.futures import TimeoutError
 from functools import partial
 
-# Load environment variables from .env file (including GEMINI_API_KEY)
+# Load environment variables from .env file (including GEMINI_API_KEY and email settings)
 load_dotenv()
 
 # Configure the Gemini API key from environment variables
@@ -23,6 +23,8 @@ max_iterations = 10  # Maximum number of tool-calling iterations before stopping
 last_response = None  # Stores the response from the most recent iteration
 iteration = 0  # Counter for the current iteration
 iteration_response = []  # List to store results from all iterations for context building
+# Get email settings from environment variables with fallback
+USER_EMAIL = os.getenv("USER_EMAIL", "your.email@gmail.com")  # Default email can be overridden by .env file
 
 async def generate_with_timeout(client, prompt, timeout=10):
     """Generate content from Gemini with a timeout to prevent hanging
@@ -73,13 +75,21 @@ def reset_state():
 async def main():
     reset_state()  # Reset state at the start of main execution
     print("Starting main execution...")
+    print("\n" + "=" * 70)
+    print("IMPORTANT: This application will need to connect to Gmail via SMTP")
+    print("Make sure your .env file contains the correct SMTP settings:")
+    print("- USER_EMAIL: Your Gmail address")
+    print("- SMTP_USER: Your Gmail address")
+    print("- SMTP_PASSWORD: Your Gmail App Password (create in Google Account settings)")
+    print("=" * 70 + "\n")
+    
     try:
-        # Create a connection to the MCP server using example2-3.py
-        # which implements various math functions and Paint tool commands
+        # Create a connection to the MCP server using example2-3_Gmail.py
+        # which implements various math functions and email sending functions
         print("Establishing connection to MCP server...")
         server_params = StdioServerParameters(
             command="python",
-            args=["example2-3.py"]
+            args=["example2-3_Gmail.py"]
         )
 
         # Create a client that communicates with the MCP server via stdio
@@ -93,6 +103,7 @@ async def main():
                     print("Session initialized successfully")
                 except Exception as e:
                     print(f"Error initializing session: {e}")
+                    print("This error might occur if there's a problem with the MCP server.")
                     raise
                     
                 # Retrieve the list of available tools from the MCP server
@@ -143,7 +154,7 @@ async def main():
                 print("Created system prompt...")
                 
                 # Build the system prompt that instructs the LLM on how to use tools
-                system_prompt = f"""You are an agent that can solve both text-based and mathematical problems in iterations. You have access to various tools for text processing, mathematics, and visualization.
+                system_prompt = f"""You are an agent that can solve both text-based and mathematical problems in iterations. You have access to various tools for text processing, mathematics, and email sending.
 
 Available tools:
 {tools_description}
@@ -168,11 +179,12 @@ CRITICAL INSTRUCTIONS:
 - Do not repeat function calls with the same parameters - if a call gives an error, try a different format
 - Only give FINAL_ANSWER when you have completed all necessary calculations or text processing
 - Your final answer can be either text or numbers, depending on what the query asks for
-- After calculating the final answer, you must visualize it in Microsoft Paint using these operations:
-  1. First call 'open_paint' to open the Paint application
-  2. Secondly, call 'draw_rectangle' to create a rectangle on the canvas
-  3. Finally, call 'add_text_in_paint' with your final answer text. The text should always be in the format: FINAL_ANSWER: [your answer]
-  4. Only after completing these Paint operations, provide your FINAL_ANSWER
+- After calculating the final answer, you must send it via email using the send_email function:
+  1. Call 'send_email' with these parameters:
+     - recipient: Use '{USER_EMAIL}' (the user's own email)
+     - subject: 'Final Answer from Agent'
+     - message: Your final answer formatted as 'This is the FINAL_ANSWER by the agent: [your answer]'
+  2. Only after sending the email, provide your FINAL_ANSWER
 
 Examples of different types of problems (REMEMBER: ONE FUNCTION CALL PER ITERATION):
 - For math: FUNCTION_CALL: add|5|3
@@ -181,10 +193,7 @@ Examples of different types of problems (REMEMBER: ONE FUNCTION CALL PER ITERATI
 - For sequence generation: FUNCTION_CALL: fibonacci_numbers|6
 - For array operations (CORRECT): FUNCTION_CALL: int_list_to_exponential_sum|73,78,68,73,65
 - For array operations (INCORRECT): FUNCTION_CALL: int_list_to_exponential_sum|73|78|68|73|65
-- For Paint operations: 
-  FUNCTION_CALL: open_paint
-  FUNCTION_CALL: draw_rectangle|600|350|1150|700
-  FUNCTION_CALL: add_text_in_paint|FINAL_ANSWER: [0, 1, 1, 2, 3, 5]
+- For email: FUNCTION_CALL: send_email|{USER_EMAIL}|Final Answer from Agent|This is the FINAL_ANSWER by the agent: [0, 1, 1, 2, 3, 5]
 - Final response can be text: FINAL_ANSWER: [Delhi]
 - Or numbers: FINAL_ANSWER: [0, 1, 1, 2, 3, 5]
 
@@ -197,9 +206,7 @@ Your entire response should be a single line starting with either FUNCTION_CALL:
                 then Find the fibonacci numbers of the length of the answer\
                 to the previous question \
                 ('What is the capital of India?'). \
-                After calculating the final result, \
-                visualize it in Microsoft Paint by opening Paint, \
-                drawing a rectangle, and adding the result as text."""
+                send the result as an email to myself."""
                 print("Starting iteration loop...")
                 
                 # Use global iteration variables for tracking state
@@ -295,11 +302,9 @@ Your entire response should be a single line starting with either FUNCTION_CALL:
                             result = await session.call_tool(func_name, arguments=arguments)
                             print(f"DEBUG: Raw result: {result}")
                             
-                            # Add delays after Paint operations to ensure they complete successfully
-                            if func_name == "open_paint":
-                                await asyncio.sleep(2)  # Wait longer for Paint to open fully
-                            elif func_name == "draw_rectangle" or func_name == "add_text_in_paint":
-                                await asyncio.sleep(2)  # Wait for Paint operations to complete
+                            # Add delays after sending email to ensure it completes successfully
+                            if func_name == "send_email":
+                                await asyncio.sleep(2)  # Wait for email sending to complete
                             
                             # Extract and format the result content for the next iteration
                             if hasattr(result, 'content'):

@@ -9,8 +9,10 @@ import asyncio
 import google.generativeai as genai
 from concurrent.futures import TimeoutError
 from functools import partial
+import json
+import webbrowser
 
-# Load environment variables from .env file (including GEMINI_API_KEY)
+# Load environment variables from .env file (including GEMINI_API_KEY and email settings)
 load_dotenv()
 
 # Configure the Gemini API key from environment variables
@@ -23,6 +25,11 @@ max_iterations = 10  # Maximum number of tool-calling iterations before stopping
 last_response = None  # Stores the response from the most recent iteration
 iteration = 0  # Counter for the current iteration
 iteration_response = []  # List to store results from all iterations for context building
+# Get email settings from environment variables with fallback
+USER_EMAIL = os.getenv("USER_EMAIL", "your.email@gmail.com")  # Default email can be overridden by .env file
+# OAuth client details for Gmail authentication
+CLIENT_SECRET_FILE = 'client_secret_819038297150-71h5nap5siu85uh3eti1vhf3hpnm71c6.apps.googleusercontent.com.json'
+TOKEN_PICKLE_FILE = 'token.pickle'
 
 async def generate_with_timeout(client, prompt, timeout=10):
     """Generate content from Gemini with a timeout to prevent hanging
@@ -70,16 +77,84 @@ def reset_state():
     iteration = 0
     iteration_response = []
 
+def check_client_secret_file():
+    """Verify that the OAuth client secret file exists and is valid
+    
+    Returns:
+        bool: True if the file exists and contains valid OAuth credentials, False otherwise
+    """
+    try:
+        if not os.path.exists(CLIENT_SECRET_FILE):
+            print(f"ERROR: OAuth client secret file not found: {CLIENT_SECRET_FILE}")
+            return False
+            
+        # Try to load and validate the JSON structure
+        with open(CLIENT_SECRET_FILE, 'r') as f:
+            client_data = json.load(f)
+            
+        # Check for required keys in the OAuth client secret format
+        if 'installed' not in client_data:
+            print("ERROR: Invalid client secret file. Missing 'installed' section.")
+            return False
+            
+        required_keys = ['client_id', 'client_secret', 'auth_uri', 'token_uri']
+        for key in required_keys:
+            if key not in client_data['installed']:
+                print(f"ERROR: Invalid client secret file. Missing '{key}' in 'installed' section.")
+                return False
+                
+        return True
+    except json.JSONDecodeError:
+        print(f"ERROR: Invalid JSON in client secret file: {CLIENT_SECRET_FILE}")
+        return False
+    except Exception as e:
+        print(f"ERROR checking client secret file: {str(e)}")
+        return False
+
 async def main():
     reset_state()  # Reset state at the start of main execution
     print("Starting main execution...")
+    print("\n" + "=" * 70)
+    print("IMPORTANT: This application requires Gmail OAuth 2.0 authentication")
+    print("Before running this application, you need to generate OAuth tokens")
+    print("Please run 'manual_gmail_auth.py' first if you haven't already")
+    print("Command: python manual_gmail_auth.py")
+    print("\nThe manual_gmail_auth.py script will:")
+    print("1. Provide an authorization URL to copy/paste into your browser")
+    print("2. Guide you through the authentication process")
+    print("3. Save the authorization tokens for use by this application")
+    print("\nMake sure your .env file contains:")
+    print("- USER_EMAIL: Your Gmail address that will be used for sending emails")
+    print("=" * 70 + "\n")
+    
+    # Check if the OAuth token file exists before proceeding
+    token_file = 'token.json'
+    if not os.path.exists(token_file):
+        print("ERROR: OAuth token file not found!")
+        print(f"Please run 'python manual_gmail_auth.py' to create the token file.")
+        return
+    
+    # Verify the OAuth client secret file exists and is valid
+    if not check_client_secret_file():
+        print("Cannot continue without a valid OAuth client secret file.")
+        return
+    
+    # Inform user about the authorization process
+    print("When prompted, please follow these steps to authorize Gmail access:")
+    print("1. Copy the provided authorization URL and paste it into your browser")
+    print("2. Choose the Gmail account you want to use (matching USER_EMAIL)")
+    print("3. You may see a warning that the app is unverified - click 'Advanced' and 'Go to...'")
+    print("4. Click 'Continue' to grant the application permission to send emails")
+    print("5. Copy the authorization code shown and paste it back into this terminal")
+    print("6. Press Enter to continue the authorization process")
+    
     try:
-        # Create a connection to the MCP server using example2-3.py
-        # which implements various math functions and Paint tool commands
+        # Create a connection to the MCP server using example2-3_Gmail_2.py
+        # which implements various math functions and email sending functions with OAuth
         print("Establishing connection to MCP server...")
         server_params = StdioServerParameters(
             command="python",
-            args=["example2-3.py"]
+            args=["example2-3_Gmail_2.py"]
         )
 
         # Create a client that communicates with the MCP server via stdio
@@ -93,6 +168,7 @@ async def main():
                     print("Session initialized successfully")
                 except Exception as e:
                     print(f"Error initializing session: {e}")
+                    print("This error might occur if there's a problem with the MCP server.")
                     raise
                     
                 # Retrieve the list of available tools from the MCP server
@@ -143,7 +219,7 @@ async def main():
                 print("Created system prompt...")
                 
                 # Build the system prompt that instructs the LLM on how to use tools
-                system_prompt = f"""You are an agent that can solve both text-based and mathematical problems in iterations. You have access to various tools for text processing, mathematics, and visualization.
+                system_prompt = f"""You are an agent that can solve both text-based and mathematical problems in iterations. You have access to various tools for text processing, mathematics, and email sending.
 
 Available tools:
 {tools_description}
@@ -168,11 +244,12 @@ CRITICAL INSTRUCTIONS:
 - Do not repeat function calls with the same parameters - if a call gives an error, try a different format
 - Only give FINAL_ANSWER when you have completed all necessary calculations or text processing
 - Your final answer can be either text or numbers, depending on what the query asks for
-- After calculating the final answer, you must visualize it in Microsoft Paint using these operations:
-  1. First call 'open_paint' to open the Paint application
-  2. Secondly, call 'draw_rectangle' to create a rectangle on the canvas
-  3. Finally, call 'add_text_in_paint' with your final answer text. The text should always be in the format: FINAL_ANSWER: [your answer]
-  4. Only after completing these Paint operations, provide your FINAL_ANSWER
+- After calculating the final answer, you must send it via email using the send_email function:
+  1. Call 'send_email' with these parameters:
+     - recipient: Use '{USER_EMAIL}' (the user's own email)
+     - subject: 'Final Answer from Agent'
+     - message: Your final answer formatted as 'This is the FINAL_ANSWER by the agent: [your answer]'
+  2. Only after sending the email, provide your FINAL_ANSWER
 
 Examples of different types of problems (REMEMBER: ONE FUNCTION CALL PER ITERATION):
 - For math: FUNCTION_CALL: add|5|3
@@ -181,10 +258,7 @@ Examples of different types of problems (REMEMBER: ONE FUNCTION CALL PER ITERATI
 - For sequence generation: FUNCTION_CALL: fibonacci_numbers|6
 - For array operations (CORRECT): FUNCTION_CALL: int_list_to_exponential_sum|73,78,68,73,65
 - For array operations (INCORRECT): FUNCTION_CALL: int_list_to_exponential_sum|73|78|68|73|65
-- For Paint operations: 
-  FUNCTION_CALL: open_paint
-  FUNCTION_CALL: draw_rectangle|600|350|1150|700
-  FUNCTION_CALL: add_text_in_paint|FINAL_ANSWER: [0, 1, 1, 2, 3, 5]
+- For email: FUNCTION_CALL: send_email|{USER_EMAIL}|Final Answer from Agent|This is the FINAL_ANSWER by the agent: [0, 1, 1, 2, 3, 5]
 - Final response can be text: FINAL_ANSWER: [Delhi]
 - Or numbers: FINAL_ANSWER: [0, 1, 1, 2, 3, 5]
 
@@ -197,9 +271,7 @@ Your entire response should be a single line starting with either FUNCTION_CALL:
                 then Find the fibonacci numbers of the length of the answer\
                 to the previous question \
                 ('What is the capital of India?'). \
-                After calculating the final result, \
-                visualize it in Microsoft Paint by opening Paint, \
-                drawing a rectangle, and adding the result as text."""
+                send the result as an email to myself."""
                 print("Starting iteration loop...")
                 
                 # Use global iteration variables for tracking state
@@ -295,11 +367,9 @@ Your entire response should be a single line starting with either FUNCTION_CALL:
                             result = await session.call_tool(func_name, arguments=arguments)
                             print(f"DEBUG: Raw result: {result}")
                             
-                            # Add delays after Paint operations to ensure they complete successfully
-                            if func_name == "open_paint":
-                                await asyncio.sleep(2)  # Wait longer for Paint to open fully
-                            elif func_name == "draw_rectangle" or func_name == "add_text_in_paint":
-                                await asyncio.sleep(2)  # Wait for Paint operations to complete
+                            # Add delays after sending email to ensure it completes successfully
+                            if func_name == "send_email":
+                                await asyncio.sleep(2)  # Wait for email sending to complete
                             
                             # Extract and format the result content for the next iteration
                             if hasattr(result, 'content'):
