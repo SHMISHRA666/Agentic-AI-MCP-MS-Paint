@@ -17,6 +17,11 @@ The project consists of multiple components for different functionalities:
    - `talk2mcp-2_Gmail_2.py`: Client for OAuth-based Gmail sending.
    - `manual_gmail_auth.py`: Helper script to handle Gmail OAuth 2.0 authentication.
 
+## Video Demonstrations
+
+- [Paint Automation Demo](https://www.youtube.com/watch?v=KzLzfTtZpLg): Watch how the Paint automation features work in action
+- [Gmail Automation Demo](https://youtu.be/Q_Sv9OECws8): See the Gmail integration features in operation
+
 ## Features
 
 ### Mathematical Tools
